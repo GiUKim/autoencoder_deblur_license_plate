@@ -23,28 +23,19 @@ from PIL import Image
 from config import Config
 from config import *
 import cv2
-# config = Config(tuttrain.train_dir, tuttrain.test_dir, tuttrain.checkpoint_dir)
 
 config = Config()
 def get_label(path):
-    lbl_name = path.split('/')[-2]
-    # lbl_name = path.split('\\')[-2]
-    lbl_idx = config.class_list.index(lbl_name)
-    if config.has_unknown:
-        if lbl_idx < config.unknown_idx:
-            label = np.eye(len(config.class_list) - 1, dtype=np.float32)[lbl_idx]
-        elif lbl_idx == config.unknown_idx:
-            label = np.zeros((len(config.class_list) - 1), dtype=np.float32)
-        else:
-            label = np.eye(len(config.class_list) - 1, dtype=np.float32)[lbl_idx - 1]
-        if config.label_smoothing:
-            label[np.where(label < 0.5)] += config.label_smoothing_scale
-            label[np.where(label > 0.5)] -= config.label_smoothing_scale
+    lbl_path = os.path.join('/'.join(path.split('/')[:-2]), 'dst', path.split('/')[-1])
+    if config.isColor:
+        label = Image.open(lbl_path)
     else:
-        label = np.eye(len(config.class_list), dtype=np.float32)[lbl_idx]
-        if config.label_smoothing:
-            label[np.where(label < 0.5)] += config.label_smoothing_scale
-            label[np.where(label > 0.5)] -= config.label_smoothing_scale
+        label = Image.open(lbl_path).convert('L')
+    label = label.resize((config.width, config.height))
+    label = np.array(label, dtype=np.float32)
+    label = label / 255.
+    if config.isColor:
+        label = cv2.cvtColor(label, cv2.COLOR_BGR2RGB)
     return label
 
 class Dataset(Dataset):
@@ -70,10 +61,10 @@ class Dataset(Dataset):
         image = image / 255.
         if config.isColor:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        label = get_label(path) # get label
+        label = get_label(path) # get label tensor(image)
         if self.transform:
             image = self.transform(image=image)["image"]
-        label = torch.Tensor(label)
+            label = self.transform(image=label)["image"]
         if not config.knowledge_dist:
             return image, label
         else:
