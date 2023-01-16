@@ -53,7 +53,7 @@ class ConvBlock(nn.Module):
             x = self.pool(x)
         return x
 
-ch = 24
+ch = 32
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -62,22 +62,27 @@ class Net(nn.Module):
         else:
             self.cbr1 = ConvBlock(pan_in=1, pan_out=ch, kernel_size=(3, 3), padding=1, is_pool=True) # 48 48 16
 
-        self.enc1 = nn.Linear((config.width // 2) * (config.height // 2) * ch, 256)
+        self.enc1 = nn.Linear((config.width // 2) * (config.height // 2) * ch, 512)
         self.enc1_act = nn.ReLU()
 
-        self.dec1 = nn.Linear(256, (config.width // 2) * (config.height // 2) * ch)
+        self.hidden = nn.Linear(512, 128)
+        self.hidden_act = nn.ReLU()
+
+        self.dec1 = nn.Linear(128, (config.width // 2) * (config.height // 2) * ch)
         self.dec1_act = nn.ReLU()
         self.cbr2 = nn.ConvTranspose2d(in_channels=ch, out_channels=3, kernel_size=(4, 4), stride=2, padding=1)
         self.out_act = nn.Sigmoid()
 
     def forward(self, x):
         enc_cbr = self.cbr1(x)
-        #enc_cbr_att = self.att1(enc_cbr)
         enc_cbr_reshape = enc_cbr.reshape(-1, (config.width // 2) * (config.height // 2) * ch)
         enc1 = self.enc1(enc_cbr_reshape)
         enc1_act = self.enc1_act(enc1)
 
-        dec1 = self.dec1(enc1_act)
+        hidden = self.hidden(enc1_act)
+        hidden_act = self.hidden_act(hidden)
+
+        dec1 = self.dec1(hidden_act)
         dec1_act = self.dec1_act(dec1)
         dec1_act = dec1_act.reshape(-1, ch, (config.height // 2), (config.width // 2))
         dec1_act += enc_cbr

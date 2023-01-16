@@ -168,11 +168,6 @@ if __name__ == '__main__':
             # cv2.imshow('img', train_img)
             # k = cv2.waitKey(0)
             #train_img = data.squeeze(0).reshape(config.width, config.height, 3).cpu().detach().numpy()
-            if batch_idx % config.visualize_period == 0 and config.visualize_grad_cam:
-                model.eval()
-                visualize(model, epoch, prev_accuracy)
-                model.train()
-
             if device is not None:
                 data = data.cuda(device, non_blocking=True)
                 if config.knowledge_dist:
@@ -242,12 +237,11 @@ if __name__ == '__main__':
                 data, target = data.to(device), target.to(device)  # target: (32, class)
                 output = model(data)
 
-                input_img = data.squeeze(0).reshape(3, config.height, config.width)
-                input_img = np.array(to_pil_image(input_img))
-                output_img = output.squeeze(0)
-                output_img = np.array(to_pil_image(output_img))
-
                 if test_batch_idx % (config.visualize_period) == 0:
+                    input_img = data.squeeze(0).reshape(3, config.height, config.width)
+                    input_img = np.array(to_pil_image(input_img))
+                    output_img = output.squeeze(0)
+                    output_img = np.array(to_pil_image(output_img))
                     visualize_img(input_img, output_img)
 
                 # if config.use_ale_loss:

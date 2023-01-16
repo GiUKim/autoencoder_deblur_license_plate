@@ -52,6 +52,8 @@ if __name__=="__main__":
     dir = config.predict_src_path
     imgs = glob(dir + '/*.jpg')
     for img in tqdm(imgs):
+        org_img = cv2.imread(img)
+        org_img = cv2.resize(org_img, (config.height * 2, config.width * 2))
         if config.isColor:
             image = Image.open(img)  # get image
         else:
@@ -65,7 +67,11 @@ if __name__=="__main__":
         predict = model(bbi).squeeze(0).permute(1, 2, 0).cpu().detach().numpy()
         predict =cv2.cvtColor(predict, cv2.COLOR_RGB2BGR)
         predict = cv2.resize(predict, (None, None), fx=2.0, fy=2.0)
-        cv2.imshow('rpe', predict)
+        org_img = org_img / 255.0
+        print('org_img.shape:', org_img.shape)
+        print('predict.shape:', predict.shape)
+        out = np.hstack([org_img, predict])
+        cv2.imshow('rpe', out)
         k = cv2.waitKey(0)
         import sys
         if k == ord('q'):
