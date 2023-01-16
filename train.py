@@ -39,7 +39,7 @@ def modelsummary(model):
         init_ch = 3
     else:
         init_ch = 1
-    summary(model, init_ch* config.width* config.height)
+    summary(model, (init_ch, config.width, config.height))
     print('=' * 20)
     print('\n')
 
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     # use_cuda = not no_cuda and torch.cuda.is_available()
     # device = torch.device('cuda' if use_cuda else 'cpu')
     # model = Net().to(device)
-    # modelsummary(model)
+    #modelsummary(model)
 
     run()
     if not os.path.exists(config.checkpoint_dir):
@@ -130,7 +130,7 @@ if __name__ == '__main__':
         model_tea = eval(config.teacher_model)()
         model_tea = model_tea.to(device)
 
-    #modelsummary(model)
+    modelsummary(model)
     print(model)
     if config.use_custom_lr:
         optimizer = optim.Adam(model.parameters(), lr=config.max_lr)
@@ -188,7 +188,8 @@ if __name__ == '__main__':
                 target = target.to(device)
 
             output = model(data)
-
+            # print('output.shape:', output.shape)
+            # print('target shape:', target.shape)
             loss = mse_loss(output, target).mean()
             # if config.use_ale_loss:
             #     loss = ale_loss(output, target).mean()
@@ -246,7 +247,7 @@ if __name__ == '__main__':
                 output_img = output.squeeze(0)
                 output_img = np.array(to_pil_image(output_img))
 
-                if test_batch_idx % (config.log_interval * 2)  == 0:
+                if test_batch_idx % (config.visualize_period) == 0:
                     visualize_img(input_img, output_img)
 
                 # if config.use_ale_loss:

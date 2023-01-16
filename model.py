@@ -53,52 +53,55 @@ class ConvBlock(nn.Module):
             x = self.pool(x)
         return x
 
-class Net2(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-        if config.isColor:
-            self.cbr1 = ConvBlock(pan_in=3, pan_out=32, kernel_size=(7, 7), padding=3, is_pool=True)
-        else:
-            self.cbr1 = ConvBlock(pan_in=1, pan_out=32, kernel_size=(7, 7), padding=3, is_pool=True) # 128x128x32
-        self.cbr2 = ConvBlock(pan_in=32, pan_out=64, is_pool=True) # 64x64x64
-        self.att2 = SE_Block(64, 4)
-        self.cbr3 = ConvBlock(pan_in=64, pan_out=128, is_pool=True) # 32x32x128
-        self.att3 = SE_Block(128, 4)
-        self.cbr4 = ConvBlock(pan_in=128, pan_out=256, is_pool=True) # 32x32x256
-        self.conv_1_1 = nn.Conv2d(256, 1, (1, 1)) # 32x32x1
-        self.enc_activation = nn.Sigmoid()
-        self.enc_output = nn.Flatten() # (16x16) flatten, [width // 2^(# of pool), height // 2^(# of pool)]
-
-        self.dec1 = nn.Linear(config.width // 2 ** (4) * config.height // 2 ** (4), 32)
-        self.dec1_act = nn.ReLU()
-        self.dec2 = nn.Linear(32, config.width * config.height * 3)
-        self.dec2_out_act = nn.Sigmoid()
-
-    def forward(self, x):
-        x = self.cbr1(x)
-        x = self.cbr2(x)
-        x = self.att2(x)
-        x = self.cbr3(x)
-        x = self.att3(x)
-        x = self.cbr4(x)
-        x = self.conv_1_1(x)
-        x = self.enc_activation(x)
-        x = self.enc_output(x)
-
-        x = self.dec1(x)
-        x = self.dec1_act(x)
-        x = self.dec2(x)
-        out = self.dec2_out_act(x).reshape(-1, 3, config.height, config.width)
-        return out
-
+ch = 24
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.enc1 = nn.Linear(config.width * config.height * 3, 256)
-        self.dec1 = nn.Linear(256, config.width * config.height * 3)
+        if config.isColor:
+            self.cbr1 = ConvBlock(pan_in=3, pan_out=ch, kernel_size=(3, 3), padding=1, is_pool=True)
+        else:
+            self.cbr1 = ConvBlock(pan_in=1, pan_out=ch, kernel_size=(3, 3), padding=1, is_pool=True) # 48 48 16
+
+        self.enc1 = nn.Linear((config.width // 2) * (config.height // 2) * ch, 256)
+        self.enc1_act = nn.ReLU()
+
+        self.dec1 = nn.Linear(256, (config.width // 2) * (config.height // 2) * ch)
+        self.dec1_act = nn.ReLU()
+        self.cbr2 = nn.ConvTranspose2d(in_channels=ch, out_channels=3, kernel_size=(4, 4), stride=2, padding=1)
+        self.out_act = nn.Sigmoid()
+
     def forward(self, x):
-        x = self.enc1(x)
-        out = self.dec1(x).reshape(-1, 3, config.height, config.width)
+        enc_cbr = self.cbr1(x)
+        #enc_cbr_att = self.att1(enc_cbr)
+        enc_cbr_reshape = enc_cbr.reshape(-1, (config.width // 2) * (config.height // 2) * ch)
+        enc1 = self.enc1(enc_cbr_reshape)
+        enc1_act = self.enc1_act(enc1)
+
+        dec1 = self.dec1(enc1_act)
+        dec1_act = self.dec1_act(dec1)
+        dec1_act = dec1_act.reshape(-1, ch, (config.height // 2), (config.width // 2))
+        dec1_act += enc_cbr
+        cbr2 = self.cbr2(dec1_act)
+        out_act = self.out_act(cbr2)
+        #out = self.cbr2.reshape(-1, 3, config.height, config.width)
+        return out_act
+
+class Net2(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.enc1 = nn.Linear(config.width * config.height * 3, 256)
+        self.enc1_act = nn.ReLU()
+        self.dec1 = nn.Linear(256, config.width * config.height * 3)
+        self.dec1_act = nn.Sigmoid()
+    def forward(self, x):
+        enc_x = self.enc1(x)
+        enc_x = self.enc1_act(enc_x)
+        y = self.dec1(enc_x)
+        y += x
+        dec_y = self.dec1_act(y)
+        out = dec_y.reshape(-1, 3, config.height, config.width)
+        #out = self.dec1(x)
+
         return out
 
 class Net_deeper(nn.Module):

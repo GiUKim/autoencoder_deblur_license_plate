@@ -60,10 +60,11 @@ if __name__=="__main__":
         trans = transforms.ToTensor()
         bi = trans(i)
         bbi = bi.unsqueeze(0)
-        bbi = bbi.reshape(-1, config.width * config.height * 3)
+        #bbi = bbi.reshape(-1, config.width * config.height * 3)
     
         predict = model(bbi).squeeze(0).permute(1, 2, 0).cpu().detach().numpy()
         predict =cv2.cvtColor(predict, cv2.COLOR_RGB2BGR)
+        predict = cv2.resize(predict, (None, None), fx=2.0, fy=2.0)
         cv2.imshow('rpe', predict)
         k = cv2.waitKey(0)
         import sys

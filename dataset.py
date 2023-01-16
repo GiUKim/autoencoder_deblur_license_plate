@@ -65,7 +65,7 @@ class Dataset(Dataset):
         label = get_label(path) # get label tensor(image)
         if self.transform:
             image = self.transform(image=image)["image"]
-            image = image.reshape(config.width * config.height * 3)
+            #image = image.reshape(config.width * config.height * 3)
             label = self.transform(image=label)["image"]
         if not config.knowledge_dist:
             return image, label
