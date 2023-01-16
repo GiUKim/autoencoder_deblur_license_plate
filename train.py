@@ -39,37 +39,27 @@ def modelsummary(model):
         init_ch = 3
     else:
         init_ch = 1
-    summary(model, (init_ch, config.width, config.height))
+    summary(model, init_ch* config.width* config.height)
     print('=' * 20)
     print('\n')
 
 def compose_train_transform_list(opts):
     sub_compose_list = []
     compose_list = []
-    if opts['center_crop'] == 1:
-        sub_compose_list.append(A.CenterCrop(config.width * 8 // 10, config.height * 8 // 10))
     if opts['rotate'] == 1:
         sub_compose_list.append(A.Rotate(limit=(-10, +10)))
-    if opts['custom_lattepyo'] == 1:
-        sub_compose_list.append(A.Lambda(name='Lambda', image=apply_custom_aug, p=1))
     if opts['horizontal_flip'] == 1:
         sub_compose_list.append(A.HorizontalFlip(p=1))
     if opts['rotate90'] == 1:
         sub_compose_list.append(A.RandomRotate90(p=1))
     if opts['vertical_flip'] == 1:
         sub_compose_list.append(A.VerticalFlip(p=1))
-    if opts['optical_distortion'] == 1:
-        sub_compose_list.append(A.OpticalDistortion(p=1))
     if opts['random_brightness_contrast'] == 1:
         sub_compose_list.append(A.RandomBrightnessContrast(brightness_limit=(-0.3, 0.3), contrast_limit=(-0.3,  0.3), p=1))
-    if opts['channel_shuffle'] == 1 and config.isColor:
-        sub_compose_list.append(A.ChannelShuffle(p=1))
-    if opts['cutout'] == 1:
-        sub_compose_list.append(A.Cutout(p=1, num_holes=8, max_h_size=8, max_w_size=8))
     val_compose_list = compose_list.copy()
     val_compose_list.append(ToTensorV2())
     compose_list.append(A.OneOf(sub_compose_list, p=0.8))
-    compose_list.append(A.Resize(config.width, config.height))
+    #compose_list.append(A.Resize(config.width, config.height))
     compose_list.append(ToTensorV2())
     return compose_list, val_compose_list
 
@@ -78,12 +68,20 @@ if __name__ == '__main__':
     config = Config()
     config.summary_info()
     live_plot = LiveLossPlot()
+
+    # no_cuda=False
+    # use_cuda = not no_cuda and torch.cuda.is_available()
+    # device = torch.device('cuda' if use_cuda else 'cpu')
+    # model = Net().to(device)
+    # modelsummary(model)
+
     run()
     if not os.path.exists(config.checkpoint_dir):
         os.makedirs(config.checkpoint_dir)
     torch.manual_seed(1)
     no_cuda=False
     bce_loss = nn.BCELoss()
+    mse_loss = nn.MSELoss()
     ale_loss = ALE_loss(gamma=config.ale_gamma)
     use_cuda = not no_cuda and torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
@@ -110,17 +108,11 @@ if __name__ == '__main__':
     )
 
     start_epoch = 1
-    max_avg_accuracy = -1.
+    #max_avg_accuracy = -1.
+    min_avg_loss = 9999999999999
     prev_accuracy = 0.0
     if not config.knowledge_dist:
-        if config.use_res18:
-            model = call_resnet18()
-            model = model.to(device)
-        elif config.use_resnext50:
-            model = call_resnext50_32x4d()
-            model = model.to(device)
-        else:
-            model = Net().to(device)
+        model = Net().to(device)
         print("config.pretrained_model : ", config.pretrained_model)
         if config.pretrained_model is not None and os.path.exists(config.pretrained_model):
             model_info = torch.load(config.pretrained_model)
@@ -135,17 +127,11 @@ if __name__ == '__main__':
 
     else:
         model = Net().to(device)
-        if config.teacher_model == 'resnext50_32x4d':
-            model_tea = call_resnext50_32x4d()
-        elif config.teacher_model == 'resnet18':
-            model_tea = call_resnet18()
-        else:
-            model_tea = eval(config.teacher_model)()
+        model_tea = eval(config.teacher_model)()
         model_tea = model_tea.to(device)
 
-    modelsummary(model)
+    #modelsummary(model)
     print(model)
-#    model = MLP_Mixer((1, config.width, config.height), 16, 64, 32, config.num_classes).to(device)
     if config.use_custom_lr:
         optimizer = optim.Adam(model.parameters(), lr=config.max_lr)
         scheduler = LRScheduler(optimizer, warm_up=0.5, total_epoch=config.epochs)
@@ -176,7 +162,12 @@ if __name__ == '__main__':
                     k = cv2.waitKey(0)
                     if k == ord('q'):
                         sys.exit(1)
-             
+            # train_tensor = data[0].reshape(3, config.height, config.width)
+            # print('train_tensor.shape:', train_tensor.shape)
+            # train_img = np.array(to_pil_image(train_tensor))
+            # cv2.imshow('img', train_img)
+            # k = cv2.waitKey(0)
+            #train_img = data.squeeze(0).reshape(config.width, config.height, 3).cpu().detach().numpy()
             if batch_idx % config.visualize_period == 0 and config.visualize_grad_cam:
                 model.eval()
                 visualize(model, epoch, prev_accuracy)
@@ -193,39 +184,39 @@ if __name__ == '__main__':
 
             if torch.cuda.is_available():
                 target = target.cuda(device, non_blocking=True)
-            else :
+            else:
                 target = target.to(device)
 
             output = model(data)
-            output = output.squeeze(0)
-            if config.use_ale_loss:
-                loss = ale_loss(output, target.squeeze()).mean()
-            else:
-                loss = F.binary_cross_entropy(output, target.squeeze())
+
+            loss = mse_loss(output, target).mean()
+            # if config.use_ale_loss:
+            #     loss = ale_loss(output, target).mean()
+            # else:
+            #     loss = F.binary_cross_entropy(output, target.squeeze())
                         
             optimizer.zero_grad()
             if config.knowledge_dist:
                 optimizer_tea.zero_grad()
                 output_tea = model_tea(data_tea)
-                #loss_tea = F.binary_cross_entropy(output_tea, target.squeeze())
-                if config.use_ale_loss:
-                    loss_tea = ale_loss(output_tea, target.squeeze()).mean()
-                else:
-                    loss_tea = F.binary_cross_entropy(output_tea, target.squeeze())
-                    #loss_tea = bce_loss(output_tea, target.squeeze())
+
+                # if config.use_ale_loss:
+                #     loss_tea = ale_loss(output_tea, target.squeeze()).mean()
+                # else:
+                #     loss_tea = F.binary_cross_entropy(output_tea, target.squeeze())
+                loss_tea = mse_loss(output_tea, target).mean()
+
                 output_tea = output_tea.detach()
                 output_tea.requires_grad = False
-                if config.use_ale_loss:
-                    loss_dist = ale_loss(output, output_tea).mean()
-                else:
-                    loss_dist = F.binary_cross_entropy(output, output_tea)
+                # if config.use_ale_loss:
+                #     loss_dist = ale_loss(output, output_tea).mean()
+                # else:
+                #     loss_dist = F.binary_cross_entropy(output, output_tea)
+                loss_dist = mse_loss(output, output_tea).mean()
 
-                #loss_dist = bce_loss(output, output_tea)
                 loss += loss_dist
                 org_loss = loss - loss_dist
-    
-            #if config.has_unknown and len(config.class_list) == 2:
-            #    output = output.view(len(output), 1)
+
             live_plot.update(loss=loss.item())
             loss.backward()
             if config.knowledge_dist:
@@ -241,65 +232,40 @@ if __name__ == '__main__':
                     epoch, batch_idx*len(data), len(train_loader.dataset), 100.*batch_idx/len(train_loader), "Loss", loss.item()
                 ), end='\r')
         model.eval()
-        test_loss = 0
-        correct = 0
-        correct_list = [f * 0 for f in range(0, config.num_classes + 1)] # last index is unknown correct
-        
+        test_loss = 0.0
+
         with torch.no_grad():
-            for data, target in test_loader:
+            for test_batch_idx, (data, target) in enumerate(test_loader):
                 if config.knowledge_dist:
                     data = data['student']
                 data, target = data.to(device), target.to(device)  # target: (32, class)
                 output = model(data)
-                output = output.squeeze(0)
-                #if config.has_unknown and len(config.class_list) == 2:
-                #    output = output.view(len(output), 1)
-                if config.use_ale_loss:
-                    test_loss += ale_loss(output, target.squeeze()).sum().item()
-                test_loss += F.binary_cross_entropy(output, target.squeeze(), reduction='sum').item()
-                for idx in range(0, len(target)):
-                    pred = output[idx]
-                    pred_max_value = torch.max(pred)
-                    if pred_max_value.item() < config.evaluate_threshold and config.has_unknown:  # pred to unknown
-                        if torch.sum(target[idx]).item() < 0.5:  # unknown correct
-                            #correct += 1  # unknown은 전체 통계 제외
-                            correct_list[-1] += 1
-                    else:
-                        if torch.argmax(target[idx]) == torch.argmax(pred) and torch.max(target[idx]).item() > 0.5:
-                            correct += 1
-                            correct_list[torch.argmax(target[idx])] += 1
 
-        if config.has_unknown:
-            total_test_len = len(test_loader.dataset) - config.test_unknown_len # unknown 통계 제외
-        else:
-            total_test_len = len(test_loader.dataset)
-        test_loss /= total_test_len
-        accuracy = 100.*correct / total_test_len
-            
-        prev_accuracy = accuracy
+                input_img = data.squeeze(0).reshape(3, config.height, config.width)
+                input_img = np.array(to_pil_image(input_img))
+                output_img = output.squeeze(0)
+                output_img = np.array(to_pil_image(output_img))
+
+                if test_batch_idx % (config.log_interval * 2)  == 0:
+                    visualize_img(input_img, output_img)
+
+                # if config.use_ale_loss:
+                #     test_loss += ale_loss(output, target.squeeze()).sum().item()
+                test_loss = mse_loss(output, target).sum().item()
+
+        total_test_len = len(test_loader.dataset)
         scheduler.step()
         if config.knowledge_dist:
             scheduler_tea.step()
         is_save = False
-        if max_avg_accuracy < accuracy: # svz model pth
-            max_avg_accuracy = accuracy
+        if min_avg_loss > test_loss:
+            min_avg_loss = test_loss
             is_save = True
-            checkpoint_path = os.path.join(config.checkpoint_dir, 'model_ep_{}_loss_{:.4f}_accuracy_{:.4f}.pt'.format(epoch, test_loss, accuracy/100.))
+            checkpoint_path = os.path.join(config.checkpoint_dir, 'model_ep_{}_loss_{:.4f}.pt'.format(epoch, test_loss))
             torch.save(model.state_dict(), checkpoint_path)
-#            torch.save({'model_state_dict':model.state_dict(),
- #                      'epoch': epoch
-   #                     },
-  #                    checkpoint_path)
 
         print('='*80, '\n')
-        print('Epochs: {}, Test set: Average Loss: {:4f}, Accuracy: {}/{} ({:.2f}%)\n'.format(
-                epoch, test_loss, correct, total_test_len, accuracy
-            )
-        )
-        print('=' * 80)
-
-        print_validation_eval_log(correct_list)
 
         if is_save:
-            print('Best Accuracy -> save model: ', os.path.join(config.checkpoint_dir, 'model_ep_{}_loss_{:.4f}_accuracy_{:.4f}.pt'.format(epoch, test_loss, accuracy/100.)))
+            print('Best Accuracy -> save model: ', os.path.join(config.checkpoint_dir, 'model_ep_{}_loss_{:.4f}.pt'.format(epoch, test_loss)))
         print('\n')

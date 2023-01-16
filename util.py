@@ -243,6 +243,24 @@ def visualize_grad_cam(display_class_list, display_class_num, value, model, epoc
     cv2.imshow('GRAD-CAM', display_img)
     cv2.waitKey(1)
 
+def visualize_img(input_img, output_img):
+    # input_img = cv2.cvtColor(input_img, cv2.COLOR_RGB2BGR)
+    # output_img = cv2.cvtColor(output_img, cv2.COLOR_RGB2BGR)
+    fig = plt.figure(figsize=(4, 4))
+    plt.subplots_adjust(bottom=0.01)
+    plt.axis('off')
+    plt.subplot(2, 1, 1)
+    plt.imshow(input_img)
+    plt.subplot(2, 1, 2)
+    plt.imshow(output_img)
+    fig.canvas.draw()
+    plt.close()
+    display_img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+    display_img = display_img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    #display_img = cv2.cvtColor(display_img, cv2.COLOR_RGB2BGR)
+    cv2.imshow('Validation', display_img)
+    cv2.waitKey(1)
+
 def visualize(model, epoch, accuracy):
     value = dict()
     def forward_hook(module, input, output):

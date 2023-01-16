@@ -53,7 +53,7 @@ class ConvBlock(nn.Module):
             x = self.pool(x)
         return x
 
-class Net(nn.Module):
+class Net2(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         if config.isColor:
@@ -76,7 +76,6 @@ class Net(nn.Module):
 
     def forward(self, x):
         x = self.cbr1(x)
-        print(x.shape)
         x = self.cbr2(x)
         x = self.att2(x)
         x = self.cbr3(x)
@@ -90,9 +89,17 @@ class Net(nn.Module):
         x = self.dec1_act(x)
         x = self.dec2(x)
         out = self.dec2_out_act(x).reshape(-1, 3, config.height, config.width)
-        print("last shape: ", out.shape)
         return out
 
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.enc1 = nn.Linear(config.width * config.height * 3, 256)
+        self.dec1 = nn.Linear(256, config.width * config.height * 3)
+    def forward(self, x):
+        x = self.enc1(x)
+        out = self.dec1(x).reshape(-1, 3, config.height, config.width)
+        return out
 
 class Net_deeper(nn.Module):
     def __init__(self):
